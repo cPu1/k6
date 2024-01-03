@@ -196,8 +196,6 @@ func (e *Scheduler) initVUsConcurrently(
 func (e *Scheduler) emitVUsAndVUsMax(ctx context.Context, out chan<- metrics.SampleContainer) func() {
 	e.state.Test.Logger.Debug("Starting emission of VUs and VUsMax metrics...")
 	tags := e.state.Test.RunTags
-	wg := &sync.WaitGroup{}
-	wg.Add(1)
 
 	emitMetrics := func() {
 		t := time.Now()
@@ -225,8 +223,10 @@ func (e *Scheduler) emitVUsAndVUsMax(ctx context.Context, out chan<- metrics.Sam
 		metrics.PushIfNotDone(ctx, out, samples)
 	}
 
-	ticker := time.NewTicker(1 * time.Second)
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		ticker := time.NewTicker(1 * time.Second)
 		defer func() {
 			ticker.Stop()
 			e.state.Test.Logger.Debug("Metrics emission of VUs and VUsMax metrics stopped")
@@ -349,11 +349,13 @@ func (e *Scheduler) runExecutor(
 		)
 
 		executorLogger.Debugf("Waiting for executor start time...")
+		timer := time.NewTimer(executorStartTime)
+		defer timer.Stop()
 		select {
 		case <-runCtx.Done():
 			runResults <- nil // no error since executor hasn't started yet
 			return
-		case <-time.After(executorStartTime):
+		case <-timer.C:
 			// continue
 		}
 	}

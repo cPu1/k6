@@ -533,10 +533,10 @@ func TestMakeRequestRPSLimit(t *testing.T) {
 	}
 
 	timer := time.NewTimer(3 * time.Second)
+	defer timer.Stop()
 	for {
 		select {
 		case <-timer.C:
-			timer.Stop()
 			val := atomic.LoadInt64(&requests)
 			assert.NotEmpty(t, val)
 			assert.InDelta(t, val, 3, 3)
