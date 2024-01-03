@@ -144,9 +144,11 @@ func (c *rootCommand) stopLoggers() {
 		close(done)
 	}()
 	close(c.stopLoggersCh)
+	timer := time.NewTimer(waitLoggerCloseTimeout)
+	defer timer.Stop()
 	select {
 	case <-done:
-	case <-time.After(waitLoggerCloseTimeout):
+	case <-timer.C:
 		c.globalState.FallbackLogger.Errorf("The logger didn't stop in %s", waitLoggerCloseTimeout)
 	}
 }

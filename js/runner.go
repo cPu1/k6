@@ -814,8 +814,10 @@ func (u *ActiveVU) RunOnce() error {
 	if isFullIteration && u.Runner.Bundle.Options.MinIterationDuration.Valid {
 		durationDiff := u.Runner.Bundle.Options.MinIterationDuration.TimeDuration() - totalTime
 		if durationDiff > 0 {
+			timer := time.NewTimer(durationDiff)
+			defer timer.Stop()
 			select {
-			case <-time.After(durationDiff):
+			case <-timer.C:
 			case <-u.RunContext.Done():
 			}
 		}

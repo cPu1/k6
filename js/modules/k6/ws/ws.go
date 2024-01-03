@@ -425,8 +425,10 @@ func (s *Socket) SetTimeout(fn goja.Callable, timeoutMs float64) error {
 		return fmt.Errorf("setTimeout requires a >0 timeout parameter, received %.2f", timeoutMs)
 	}
 	go func() {
+		timer := time.NewTimer(d)
+		defer timer.Stop()
 		select {
-		case <-time.After(d):
+		case <-timer.C:
 			select {
 			case s.scheduled <- fn:
 			case <-s.done:
@@ -475,7 +477,7 @@ func (s *Socket) SetInterval(fn goja.Callable, intervalMs float64) error {
 	return nil
 }
 
-// Close closes the webscocket. If providede the first argument will be used as the code for the close message.
+// Close closes the webscocket. If provided, the first argument will be used as the code for the close message.
 func (s *Socket) Close(args ...goja.Value) {
 	code := websocket.CloseGoingAway
 	if len(args) > 0 {

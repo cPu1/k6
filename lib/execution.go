@@ -470,14 +470,16 @@ func (es *ExecutionState) ResumeNotify() <-chan struct{} {
 // configured maxVUs number is greater than the configured starting VUs.
 func (es *ExecutionState) GetPlannedVU(logger *logrus.Entry, modifyActiveVUCount bool) (InitializedVU, error) {
 	for i := 1; i <= MaxRetriesGetPlannedVU; i++ {
+		timer := time.NewTimer(MaxTimeToWaitForPlannedVU)
 		select {
 		case vu := <-es.vus:
 			if modifyActiveVUCount {
 				es.ModCurrentlyActiveVUsCount(+1)
 			}
 			// TODO: set environment and exec
+			timer.Stop()
 			return vu, nil
-		case <-time.After(MaxTimeToWaitForPlannedVU):
+		case <-timer.C:
 			logger.Warnf("Could not get a VU from the buffer for %s", time.Duration(i)*MaxTimeToWaitForPlannedVU)
 		}
 	}

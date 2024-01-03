@@ -226,10 +226,10 @@ func (c *cmdCloud) run(cmd *cobra.Command, args []string) error {
 	)
 
 	progressCtx, progressCancel := context.WithCancel(globalCtx)
-	progressBarWG := &sync.WaitGroup{}
+	defer progressCancel()
+	var progressBarWG sync.WaitGroup
 	progressBarWG.Add(1)
 	defer progressBarWG.Wait()
-	defer progressCancel()
 	go func() {
 		showProgress(progressCtx, c.gs, []*pb.ProgressBar{progressBar}, logger)
 		progressBarWG.Done()
@@ -272,7 +272,6 @@ func (c *cmdCloud) run(cmd *cobra.Command, args []string) error {
 		}),
 	)
 
-	ticker := time.NewTicker(time.Millisecond * 2000)
 	if c.showCloudLogs {
 		go func() {
 			logger.Debug("Connecting to cloud logs server...")
@@ -282,21 +281,28 @@ func (c *cmdCloud) run(cmd *cobra.Command, args []string) error {
 		}()
 	}
 
-	for range ticker.C {
-		newTestProgress, progressErr := client.GetTestProgress(refID)
-		if progressErr != nil {
-			logger.WithError(progressErr).Error("Test progress error")
-			continue
-		}
+	ticker := time.NewTicker(2 * time.Second)
+loop:
+	for {
+		select {
+		case <-ticker.C:
+			newTestProgress, progressErr := client.GetTestProgress(refID)
+			if progressErr != nil {
+				logger.WithError(progressErr).Error("Test progress error")
+				continue
+			}
 
-		testProgressLock.Lock()
-		testProgress = newTestProgress
-		testProgressLock.Unlock()
+			testProgressLock.Lock()
+			testProgress = newTestProgress
+			testProgressLock.Unlock()
 
-		if (newTestProgress.RunStatus > cloudapi.RunStatusRunning) ||
-			(c.exitOnRunning && newTestProgress.RunStatus == cloudapi.RunStatusRunning) {
-			globalCancel()
-			break
+			if (newTestProgress.RunStatus > cloudapi.RunStatusRunning) ||
+				(c.exitOnRunning && newTestProgress.RunStatus == cloudapi.RunStatusRunning) {
+				globalCancel()
+				break loop
+			}
+		case <-progressCtx.Done():
+			break loop
 		}
 	}
 

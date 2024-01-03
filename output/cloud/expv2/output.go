@@ -181,11 +181,9 @@ func (o *Output) StopWithTestError(_ error) error {
 }
 
 func (o *Output) runPeriodicFlush() {
-	t := time.NewTicker(o.config.MetricPushInterval.TimeDuration())
-
 	o.wg.Add(1)
-
 	go func() {
+		t := time.NewTicker(o.config.MetricPushInterval.TimeDuration())
 		defer func() {
 			t.Stop()
 			o.wg.Done()

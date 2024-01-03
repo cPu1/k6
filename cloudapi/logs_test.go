@@ -115,6 +115,30 @@ func TestMSGLog(t *testing.T) {
 	}
 }
 
+// fakeTimer is a timer for testing that satisfies the cancellableTimer interface.
+type fakeTimer struct {
+	c chan time.Time
+}
+
+// newFakeTimer creates a new fakeTimer that fires immediately.
+func newFakeTimer() *fakeTimer {
+	c := make(chan time.Time, 1)
+	c <- time.Now()
+	return &fakeTimer{
+		c: c,
+	}
+}
+
+// C returns the timer channel.
+func (t *fakeTimer) C() <-chan time.Time {
+	return t.c
+}
+
+// Stop does nothing.
+func (t *fakeTimer) Stop() bool {
+	return false
+}
+
 func TestRetry(t *testing.T) {
 	t.Parallel()
 
@@ -149,14 +173,15 @@ func TestRetry(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				var sleepRequests []time.Duration
-				// sleepCollector tracks the request duration value for sleep requests.
-				sleepCollector := sleeperFunc(func(d time.Duration) {
-					sleepRequests = append(sleepRequests, d)
-				})
+				var startTimerRequests []time.Duration
+				// startTimerCollector tracks the request duration value for sleep requests.
+				startTimerCollector := func(d time.Duration) cancellableTimer {
+					startTimerRequests = append(startTimerRequests, d)
+					return newFakeTimer()
+				}
 
 				var iterations int
-				err := retry(sleepCollector, 5, 5*time.Second, 2*time.Minute, func() error {
+				err := retry(context.Background(), startTimerCollector, 5, 5*time.Second, 2*time.Minute, func() error {
 					iterations++
 					if iterations < tt.attempts {
 						return fmt.Errorf("unexpected error")
@@ -165,13 +190,13 @@ func TestRetry(t *testing.T) {
 				})
 				require.NoError(t, err)
 				require.Equal(t, tt.attempts, iterations)
-				require.Equal(t, len(tt.expWaits), len(sleepRequests))
+				require.Equal(t, len(tt.expWaits), len(startTimerRequests))
 
 				// the added random milliseconds makes difficult to know the exact value
 				// so it asserts that expwait <= actual <= expwait + 1s
 				for i, expwait := range tt.expWaits {
-					assert.GreaterOrEqual(t, sleepRequests[i], expwait)
-					assert.LessOrEqual(t, sleepRequests[i], expwait+(1*time.Second))
+					assert.GreaterOrEqual(t, startTimerRequests[i], expwait)
+					assert.LessOrEqual(t, startTimerRequests[i], expwait+(1*time.Second))
 				}
 			})
 		}
@@ -179,8 +204,9 @@ func TestRetry(t *testing.T) {
 	t.Run("Fail", func(t *testing.T) {
 		t.Parallel()
 
-		mock := sleeperFunc(func(time.Duration) { /* noop - nowait */ })
-		err := retry(mock, 5, 5*time.Second, 30*time.Second, func() error {
+		err := retry(context.Background(), func(_ time.Duration) cancellableTimer {
+			return newFakeTimer()
+		}, 5, 5*time.Second, 30*time.Second, func() error {
 			return fmt.Errorf("unexpected error")
 		})
 

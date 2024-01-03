@@ -38,11 +38,18 @@ func NewFeatureExplorerServer(features ...*Feature) *FeatureExplorerImplementati
 }
 
 // GetFeature returns the feature at the given point.
-func (s *FeatureExplorerImplementation) GetFeature(_ context.Context, point *Point) (*Feature, error) {
+func (s *FeatureExplorerImplementation) GetFeature(ctx context.Context, point *Point) (*Feature, error) {
 	s.Logf("GetFeature called with: %+v\n", point)
 
 	n := rand.Intn(1000) //nolint:gosec
-	time.Sleep(time.Duration(n) * time.Millisecond)
+
+	timer := time.NewTimer(time.Duration(n) * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
 
 	for _, feature := range s.savedFeatures {
 		if proto.Equal(feature.Location, point) {

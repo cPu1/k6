@@ -336,10 +336,10 @@ func showProgress(ctx context.Context, gs *state.GlobalState, pbs []*pb.Progress
 	}
 
 	ticker := time.NewTicker(updateFreq)
-	ctxDone := ctx.Done()
+	defer ticker.Stop()
 	for {
 		select {
-		case <-ctxDone:
+		case <-ctx.Done():
 			renderProgressBars(false)
 			gs.OutMutex.Lock()
 			printProgressBars()

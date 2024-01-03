@@ -104,7 +104,12 @@ func (c *Config) logtailConn(ctx context.Context, referenceID string, since time
 	headers.Add("X-K6TestRun-Id", referenceID)
 
 	var conn *websocket.Conn
-	err = retry(sleeperFunc(time.Sleep), 3, 5*time.Second, 2*time.Minute, func() (err error) {
+	makeTimer := func(d time.Duration) cancellableTimer {
+		return &wrappedTimer{
+			Timer: time.NewTimer(d),
+		}
+	}
+	err = retry(ctx, makeTimer, 3, 5*time.Second, 2*time.Minute, func() (err error) {
 		// We don't need to close the http body or use it for anything until we want to actually log
 		// what the server returned as body when it errors out
 		conn, _, err = websocket.DefaultDialer.DialContext(ctx, u.String(), headers) //nolint:bodyclose
@@ -207,24 +212,29 @@ func (c *Config) StreamLogsToLogger(
 	}
 }
 
-// sleeper represents an abstraction for waiting an amount of time.
-type sleeper interface {
-	Sleep(d time.Duration)
+// cancellableTimer represents an abstraction for waiting an amount of time.
+type cancellableTimer interface {
+	C() <-chan time.Time
+	Stop() bool
 }
 
-// sleeperFunc uses the underhood function for implementing the wait operation.
-type sleeperFunc func(time.Duration)
-
-func (sfn sleeperFunc) Sleep(d time.Duration) {
-	sfn(d)
+type wrappedTimer struct {
+	*time.Timer
 }
+
+func (w *wrappedTimer) C() <-chan time.Time {
+	return w.Timer.C
+}
+
+// timerFunc is a function that returns a cancellableTimer for a duration value.
+type timerFunc func(time.Duration) cancellableTimer
 
 // retry retries to execute a provided function until it isn't successful
 // or the maximum number of attempts is hit. It waits the specified interval
 // between the latest iteration and the next retry.
 // Interval is used as the base to compute an exponential backoff,
 // if the computed interval overtakes the max interval then max will be used.
-func retry(s sleeper, attempts uint, interval, max time.Duration, do func() error) (err error) {
+func retry(ctx context.Context, makeTimer timerFunc, attempts uint, interval, max time.Duration, do func() error) (err error) {
 	baseInterval := math.Abs(interval.Truncate(time.Second).Seconds())
 	r := rand.New(rand.NewSource(time.Now().UnixNano())) //nolint:gosec
 
@@ -237,7 +247,14 @@ func retry(s sleeper, attempts uint, interval, max time.Duration, do func() erro
 			if wait > max {
 				wait = max
 			}
-			s.Sleep(wait)
+
+			t := makeTimer(wait)
+			select {
+			case <-t.C():
+			case <-ctx.Done():
+				t.Stop()
+				return ctx.Err()
+			}
 		}
 		err = do()
 		if err == nil {

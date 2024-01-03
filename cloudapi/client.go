@@ -101,7 +101,13 @@ func (c *Client) Do(req *http.Request, v interface{}) error {
 		retry, err := c.do(req, v, i)
 
 		if retry {
-			time.Sleep(c.retryInterval)
+			timer := time.NewTimer(c.retryInterval)
+			select {
+			case <-timer.C:
+			case <-req.Context().Done():
+				timer.Stop()
+				return err
+			}
 			if req.GetBody != nil {
 				req.Body, _ = req.GetBody()
 			}
