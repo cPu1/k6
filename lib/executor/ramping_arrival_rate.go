@@ -436,7 +436,6 @@ func (varr RampingArrivalRate) Run(parentCtx context.Context, out chan<- metrics
 	}
 
 	regDurationDone := regDurationCtx.Done()
-	timer := time.NewTimer(time.Hour)
 	start := time.Now()
 	ch := make(chan time.Duration, 10) // buffer 10 iteration times ahead
 	var prevTime time.Duration
@@ -453,10 +452,11 @@ func (varr RampingArrivalRate) Run(parentCtx context.Context, out chan<- metrics
 		prevTime = nextTime
 		b := time.Until(start.Add(nextTime))
 		if b > 0 { // TODO: have a minimal ?
-			timer.Reset(b)
+			timer := time.NewTimer(b)
 			select {
 			case <-timer.C:
 			case <-regDurationDone:
+				timer.Stop()
 				return nil
 			}
 		}

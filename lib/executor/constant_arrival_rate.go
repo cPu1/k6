@@ -313,8 +313,7 @@ func (car ConstantArrivalRate) Run(parentCtx context.Context, out chan<- metrics
 	}
 
 	start, offsets, _ := car.et.GetStripedOffsets()
-	timer := time.NewTimer(time.Hour * 24)
-	// here the we need the not scaled one
+	// Here we need the not scaled one.
 	notScaledTickerPeriod := getTickerPeriod(
 		big.NewRat(
 			car.config.Rate.Int64,
@@ -326,7 +325,8 @@ func (car ConstantArrivalRate) Run(parentCtx context.Context, out chan<- metrics
 	metricTags := car.getMetricTags(nil)
 	for li, gi := 0, start; ; li, gi = li+1, gi+offsets[li%len(offsets)] {
 		t := notScaledTickerPeriod*time.Duration(gi) - time.Since(startTime)
-		timer.Reset(t)
+
+		timer := time.NewTimer(t)
 		select {
 		case <-timer.C:
 			if vusPool.TryRunIteration() {
@@ -362,6 +362,7 @@ func (car ConstantArrivalRate) Run(parentCtx context.Context, out chan<- metrics
 			}
 
 		case <-regDurationCtx.Done():
+			timer.Stop()
 			return nil
 		}
 	}

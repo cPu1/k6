@@ -692,11 +692,11 @@ func (rs *rampingVUsRunState) scheduledVUsHandlerStrategy() func(lib.ExecutionSt
 // TODO set start here?
 // TODO move it to a struct type or something and benchmark if that makes a difference
 func waiter(ctx context.Context, start time.Time) func(offset time.Duration) bool {
-	timer := time.NewTimer(time.Hour * 24)
 	return func(offset time.Duration) bool {
 		diff := offset - time.Since(start)
 		if diff > 0 { // wait until time of event arrives // TODO have a mininum
-			timer.Reset(diff)
+			timer := time.NewTimer(diff)
+			defer timer.Stop()
 			select {
 			case <-ctx.Done():
 				return true // exit if context is cancelled
